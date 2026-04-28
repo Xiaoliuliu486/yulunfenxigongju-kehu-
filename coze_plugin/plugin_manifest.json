@@ -1,0 +1,14 @@
+{
+  "schema_version": "v1",
+  "name_for_model": "aijing_sentiment_analysis",
+  "name_for_human": "爱敬舆论分析",
+  "description_for_model": "多平台舆论分析工具，上传Excel文件自动分析负面评价。支持抖音、快手、小红书、今日头条、懂车帝等平台的评价分析。用户上传Excel文件后，自动读取每条评价的摘要和链接，通过情感分析和关键词匹配识别负面舆论，按平台汇总并生成分析报告。支持自动去重。推荐使用同步接口analyzeSentimentSync，一次请求即可获得完整结果。",
+  "description_for_human": "上传Excel自动分析多平台负面舆论评价，支持抖音、快手、小红书等平台",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://your-server.com/openapi.yaml"
+  }
+}

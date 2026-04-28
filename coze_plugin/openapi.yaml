@@ -1,0 +1,318 @@
+openapi: 3.0.1
+info:
+  title: 爱敬舆论分析
+  description: |
+    上传Excel文件，自动分析多平台（抖音、快手、小红书、今日头条、懂车帝）评价中的负面舆论。
+    功能：
+    1. 自动读取Excel文件，识别摘要列、链接列、平台列
+    2. 自动去重（按链接去重）
+    3. 多维度情感分析（关键词匹配 + 语义分析）
+    4. 按平台汇总负面评价分布
+    5. 生成负面评价总结报告
+    6. 包含高/中/低三级置信度标记
+  version: 2.0.0
+
+servers:
+  - url: https://your-server.com
+    description: API服务地址（部署后替换为Railway分配的域名）
+
+paths:
+  /analyze-sync:
+    post:
+      operationId: analyzeSentimentSync
+      summary: 分析舆论评价（同步，推荐）
+      description: |
+        上传Excel文件，同步返回分析结果（无需轮询）。
+        - 自动匹配列名：摘要列（摘要/评价内容/标题/评论），链接列（链接/url/网址），平台列（平台/来源）
+        - 自动去重
+        - 返回完整的统计报告和负面评价列表
+        - 支持.xlsx格式
+        - 单次最多处理500条评价
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Excel文件(.xlsx)，需包含摘要列和链接列
+      responses:
+        "200":
+          description: 分析完成，返回完整结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [completed]
+                    description: 状态
+                  total:
+                    type: integer
+                    description: 实际分析条数
+                  total_original:
+                    type: integer
+                    description: 原始数据总条数（去重前）
+                  duplicates:
+                    type: integer
+                    description: 重复数据条数
+                  negative_count:
+                    type: integer
+                    description: 负面评价数量
+                  negative_rate:
+                    type: string
+                    description: 负面率百分比
+                  processing_time:
+                    type: string
+                    description: 处理耗时
+                  summary_report:
+                    type: string
+                    description: 文字总结报告（包含总体概况、按平台汇总、高频关键词、重点负面评价）
+                  statistics:
+                    type: object
+                    description: 详细统计
+                    properties:
+                      total:
+                        type: integer
+                      duplicates:
+                        type: integer
+                      negative:
+                        type: integer
+                      negative_rate:
+                        type: string
+                      confidence_levels:
+                        type: object
+                        description: 置信度分布
+                        properties:
+                          high:
+                            type: integer
+                            description: 高置信度（raw_negative_hits >= 4）
+                          medium:
+                            type: integer
+                            description: 中置信度（raw_negative_hits >= 2）
+                          low:
+                            type: integer
+                            description: 低置信度（combined < 0.35）
+                      platform_distribution:
+                        type: object
+                        description: 各平台负面评价数量
+                        additionalProperties:
+                          type: integer
+                      top_negative_keywords:
+                        type: object
+                        description: 高频负面关键词TOP15
+                        additionalProperties:
+                          type: integer
+                  negative_reviews:
+                    type: array
+                    description: 负面评价详情列表
+                    items:
+                      type: object
+                      properties:
+                        summary:
+                          type: string
+                          description: 评价摘要
+                        link:
+                          type: string
+                          description: 原文链接
+                        platform:
+                          type: string
+                          description: 平台名称
+                        confidence:
+                          type: string
+                          enum: [high, medium, low]
+                          description: 置信度
+                        is_negative:
+                          type: boolean
+                          description: 是否负面
+                        negative_score:
+                          type: number
+                          description: 负面得分
+                        keywords:
+                          type: array
+                          description: 命中的负面关键词
+                          items:
+                            type: string
+  /analyze:
+    post:
+      operationId: analyzeSentiment
+      summary: 分析舆论评价（异步）
+      description: |
+        上传Excel文件，异步启动分析，返回task_id用于查询进度和获取结果。
+        适用于大量数据的场景。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Excel文件(.xlsx)
+      responses:
+        "200":
+          description: 任务已提交
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                    description: 任务ID，用于查询进度和结果
+                  status:
+                    type: string
+                    enum: [queued]
+                  message:
+                    type: string
+                  query_url:
+                    type: string
+
+  /status/{task_id}:
+    get:
+      operationId: getAnalysisStatus
+      summary: 查询分析进度
+      description: 通过task_id查询异步分析任务的当前进度
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: 任务ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 任务当前状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [queued, processing, completed, error]
+                  progress:
+                    type: integer
+                    description: 当前进度
+                  total:
+                    type: integer
+                    description: 总条数
+                  message:
+                    type: string
+                  eta:
+                    type: number
+                    description: 预计剩余秒数
+
+  /result/{task_id}:
+    get:
+      operationId: getAnalysisResult
+      summary: 获取分析结果
+      description: 分析完成后，通过task_id获取完整的分析报告和负面评价列表
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: 任务ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 完整分析结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [completed]
+                  total:
+                    type: integer
+                  duplicates:
+                    type: integer
+                  negative_count:
+                    type: integer
+                  negative_rate:
+                    type: string
+                  summary_report:
+                    type: string
+                  statistics:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      duplicates:
+                        type: integer
+                      valid:
+                        type: integer
+                      negative:
+                        type: integer
+                      negative_rate:
+                        type: string
+                      confidence_levels:
+                        type: object
+                        properties:
+                          high:
+                            type: integer
+                          medium:
+                            type: integer
+                          low:
+                            type: integer
+                      platform_distribution:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                      top_negative_keywords:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                  negative_reviews:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        summary:
+                          type: string
+                        link:
+                          type: string
+                        platform:
+                          type: string
+                        confidence:
+                          type: string
+                          enum: [high, medium, low]
+                        negative_score:
+                          type: number
+                        keywords:
+                          type: array
+                          items:
+                            type: string
+
+  /health:
+    get:
+      operationId: healthCheck
+      summary: 健康检查
+      description: 检查API服务是否正常运行
+      responses:
+        "200":
+          description: 服务状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  active_tasks:
+                    type: integer
+                  timestamp:
+                    type: string
